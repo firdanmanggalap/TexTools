@@ -1,2 +1,2 @@
-lexicalrichness
-textstat
+lexicalrichness==0.3.0
+textstat==0.7.3
