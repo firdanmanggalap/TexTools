@@ -75890,7 +75890,7 @@ s=p}for(;;)switch(s){case 0:a=m.d.a.a
 if(J.cO(a)===0){s=1
 break}m.ah(new A.ag7(m))
 p=4
-l=A.h8("textools-api-production.up.railway.app/api/analyze")
+l=A.h8("https://textools-api-production.up.railway.app/api/analyze")
 f=A.nP(m.e.a.a,null)
 k=f==null?50:f
 e=A.nP(m.f.a.a,null)
