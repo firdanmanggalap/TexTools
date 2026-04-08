@@ -1,10 +1,12 @@
+# api/analyze.py
 import json
 from lexicalrichness import LexicalRichness
 import textstat
 
 def handler(request):
     try:
-        data = request.json() or {}
+        # Vercel Python request body
+        data = json.loads(request.get_data() or "{}")
         text = data.get("text", "")
 
         text = text.replace("’", "").replace("'", "")
@@ -15,9 +17,7 @@ def handler(request):
         if not text:
             return {
                 "statusCode": 200,
-                "headers": {
-                    "Access-Control-Allow-Origin": "*"
-                },
+                "headers": {"Access-Control-Allow-Origin": "*"},
                 "body": json.dumps({"error": "Empty text"})
             }
 
@@ -52,8 +52,6 @@ def handler(request):
     except Exception as e:
         return {
             "statusCode": 500,
-            "headers": {
-                "Access-Control-Allow-Origin": "*"
-            },
+            "headers": {"Access-Control-Allow-Origin": "*"},
             "body": json.dumps({"error": str(e)})
         }
