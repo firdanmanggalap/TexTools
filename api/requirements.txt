@@ -1,2 +1,5 @@
-lexicalrichness==0.3.0
-textstat==0.7.3
+fastapi==0.111.1
+mangum==0.23.1
+uvicorn==0.23.1
+lexicalrichness==0.2.2
+textstat==0.8.1
