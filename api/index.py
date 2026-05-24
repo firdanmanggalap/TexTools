@@ -1,8 +1,29 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from lexicalrichness import LexicalRichness
-import textstat
-import re
+# --- Vercel serverless environment setup (read-only fs workaround) ---
+# These two lines redirect HOME/NLTK_DATA to /tmp so libraries like nltk,
+# textstat, and lexicalrichness can write their caches. The analyzer logic
+# below is unchanged.
+import os
+os.environ.setdefault("HOME", "/tmp")
+os.environ.setdefault("NLTK_DATA", "/tmp/nltk_data")
+os.makedirs("/tmp/nltk_data", exist_ok=True)
+
+import nltk  # noqa: E402
+nltk.data.path.insert(0, "/tmp/nltk_data")
+for _res in ("punkt", "punkt_tab"):
+    try:
+        nltk.data.find(f"tokenizers/{_res}")
+    except LookupError:
+        try:
+            nltk.download(_res, download_dir="/tmp/nltk_data", quiet=True)
+        except Exception:
+            pass
+# --- end env setup ---
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from lexicalrichness import LexicalRichness  # noqa: E402
+import textstat  # noqa: E402
+import re  # noqa: E402
 
 app = FastAPI()
 
