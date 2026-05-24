@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Info } from "lucide-react";
+import { Check, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   bandForMetric,
@@ -26,19 +26,32 @@ export function MetricCard({ def, value, loading }: Props) {
   const [copied, setCopied] = useState(false);
   const display = formatMetric(value, def.kind);
   const band = value !== undefined ? bandForMetric(def.key, value) : null;
+  const interactive = value !== undefined && !loading;
 
   async function copyValue() {
-    if (value === undefined) return;
-    await navigator.clipboard.writeText(String(value));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    if (!interactive) return;
+    try {
+      await navigator.clipboard.writeText(String(value));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Clipboard API can fail in insecure contexts — silently ignore
+    }
   }
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={copyValue}
+      disabled={!interactive}
+      aria-label={interactive ? `Copy ${def.label}: ${display}` : def.label}
       className={cn(
-        "group relative rounded-xl bg-card/70 ring-1 ring-border px-4 py-3.5 transition-colors",
-        "hover:ring-accent/30 hover:bg-card/90"
+        "group relative w-full text-left rounded-xl bg-card/70 ring-1 ring-border px-4 py-3.5",
+        "transition-all duration-150",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+        interactive && "cursor-pointer hover:ring-accent/40 hover:bg-card/95 active:scale-[0.985]",
+        copied && "ring-accent/60 bg-accent-soft",
+        !interactive && "cursor-default"
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -48,7 +61,7 @@ export function MetricCard({ def, value, loading }: Props) {
               {def.abbr ?? def.label}
             </span>
             <span
-              className="text-muted-foreground/70 hover:text-accent transition-colors"
+              className="text-muted-foreground/70"
               title={def.hint}
             >
               <Info className="h-3 w-3" />
@@ -61,26 +74,25 @@ export function MetricCard({ def, value, loading }: Props) {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={copyValue}
-          disabled={value === undefined}
-          className={cn(
-            "shrink-0 rounded-md p-1 text-muted-foreground/60 transition-all",
-            "opacity-0 group-hover:opacity-100",
-            "hover:text-accent disabled:opacity-0"
-          )}
-          aria-label={`Copy ${def.label}`}
-        >
-          {copied ? (
-            <Check className="h-3.5 w-3.5 text-accent" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
-        </button>
+        {band && !copied && (
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1",
+              toneClass[band.tone]
+            )}
+          >
+            {band.label}
+          </span>
+        )}
+
+        {copied && (
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">
+            <Check className="h-3 w-3" /> Copied
+          </span>
+        )}
       </div>
 
-      <div className="mt-1.5 flex items-baseline justify-between gap-2">
+      <div className="mt-2">
         <div
           className={cn(
             "font-mono text-2xl font-semibold tabular-nums tracking-tight",
@@ -90,18 +102,7 @@ export function MetricCard({ def, value, loading }: Props) {
         >
           {loading ? "···" : display}
         </div>
-
-        {band && (
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-medium ring-1",
-              toneClass[band.tone]
-            )}
-          >
-            {band.label}
-          </span>
-        )}
       </div>
-    </div>
+    </button>
   );
 }
