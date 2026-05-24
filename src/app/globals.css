@@ -53,14 +53,24 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(1200px 600px at 20% -10%, rgba(59, 186, 156, 0.08), transparent 60%),
-    radial-gradient(900px 500px at 100% 10%, rgba(99, 102, 241, 0.06), transparent 60%),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  position: relative;
+}
+
+/* Viewport-anchored ambient glow — stays put while you scroll, no repeating */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(900px 500px at 15% -10%, rgba(59, 186, 156, 0.10), transparent 60%),
+    radial-gradient(700px 400px at 100% 0%, rgba(99, 102, 241, 0.06), transparent 60%);
 }
 
 @keyframes fade-in-up {
