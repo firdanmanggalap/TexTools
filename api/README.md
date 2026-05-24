@@ -4,15 +4,15 @@ FastAPI service that powers the TexTools analyzer. Computes lexical richness
 (via [`lexicalrichness`](https://pypi.org/project/lexicalrichness/)) and
 readability metrics (via [`textstat`](https://pypi.org/project/textstat/)).
 
-> The implementation in `main.py` is intentionally untouched — the public
-> contract matches the existing Railway deployment at
-> `https://textools-api-production.up.railway.app`.
+> The implementation in `index.py` is intentionally untouched from the
+> original — only the filename was changed (from `main.py`) to match Vercel's
+> Python serverless function convention.
 
 ## Run locally
 
 ```bash
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn index:app --reload --port 8000
 ```
 
 ## Run with Docker

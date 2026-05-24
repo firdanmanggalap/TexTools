@@ -4,56 +4,65 @@ Lexical richness &amp; readability analyzer. Paste any English text and instantl
 see word counts, vocabulary diversity (TTR / MTLD / MSTTR / MATTR / HD-D) and
 readability scores (Flesch, Flesch-Kincaid, Gunning Fog, SMOG).
 
-This is a monorepo combining the **web frontend** (formerly the standalone
-[`TexTools`](https://github.com/firdanmanggalap/TexTools) repo, originally
-built in Flutter) and the **analysis API** (formerly
-[`TexTools-API`](https://github.com/firdanmanggalap/TexTools-API)) into a
-single project.
+A single repo combining the **Next.js web app** and the **FastAPI analysis
+backend**, deployable to Vercel as one project. Replaces the old split between
+[`TexTools`](https://github.com/firdanmanggalap/TexTools) (Flutter build) and
+[`TexTools-API`](https://github.com/firdanmanggalap/TexTools-API).
 
 ```
-textools/
-├── web/          Next.js 16 + React 19 + Tailwind v4 frontend
-├── api/          FastAPI service (Python)
-└── docker-compose.yml
+.
+├── api/
+│   ├── index.py          FastAPI app — function logic untouched from original
+│   ├── requirements.txt
+│   └── Dockerfile        (only for local docker-compose; Vercel doesn't use it)
+├── src/                  Next.js app (app router)
+│   ├── app/
+│   ├── components/
+│   └── lib/
+├── public/
+├── package.json
+├── vercel.json           routes /api/* to api/index.py
+└── docker-compose.yml    local dev option
 ```
 
-## Quick start
+## Deploy on Vercel
 
-### 1. Run the API
+The repo is set up for a single-project deploy. Vercel detects:
+
+- **Next.js** from `package.json` + `next.config.ts` at the root
+- **Python serverless function** from `api/index.py` + `api/requirements.txt`
+
+`vercel.json` rewrites all `/api/*` requests to the FastAPI handler, which
+keeps the existing route `@app.post("/api/analyze")` working unchanged. Since
+the web and the API live on the same origin, no CORS configuration is needed.
+
+Just connect the repo on Vercel and deploy — no environment variables needed.
+
+## Run locally
+
+### Option A: Next dev + uvicorn
 
 ```bash
+# Terminal 1 — API
 cd api
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-```
+uvicorn index:app --reload --port 8000
 
-The API will be live at `http://localhost:8000`.
-
-### 2. Run the web app
-
-```bash
-cd web
-cp .env.example .env.local
-# Edit .env.local if you want to point at a different API (defaults to the
-# Railway deployment so you can run the UI with zero backend setup).
+# Terminal 2 — Web
+cp .env.example .env.local       # set NEXT_PUBLIC_API_URL=http://localhost:8000
 npm install
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Or run both with Docker
+### Option B: docker-compose
 
 ```bash
 docker compose up --build
 ```
 
-## Configuration
-
-The web app reads `NEXT_PUBLIC_API_URL` at build time. If unset, it falls back
-to the public Railway deployment of the API, so the UI works out of the box.
-
-## API
+## API contract
 
 `POST /api/analyze`
 
@@ -66,10 +75,10 @@ to the public Railway deployment of the API, so the UI works out of the box.
 }
 ```
 
-See [`api/README.md`](./api/README.md) for the full response shape.
+See [`api/README.md`](./api/README.md) for the response shape.
 
 ## Credits
 
-Original Flutter app &amp; Python API by [@firdanmanggalap](https://github.com/firdanmanggalap).
-This monorepo rebuilds the frontend in Next.js while keeping the API logic
-untouched.
+Original Flutter app &amp; Python API by
+[@firdanmanggalap](https://github.com/firdanmanggalap). This monorepo rebuilds
+the frontend in Next.js while keeping the API logic untouched.

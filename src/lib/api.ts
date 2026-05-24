@@ -27,9 +27,10 @@ export interface AnalyzeError {
   error: string;
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
-  "https://textools-api-production.up.railway.app";
+// Empty string = call the same Vercel deployment (where /api/* is the FastAPI
+// serverless function). Override via NEXT_PUBLIC_API_URL for split deploys
+// (e.g. local dev pointing at uvicorn on :8000).
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 export async function analyzeText(
   payload: AnalyzeRequest
