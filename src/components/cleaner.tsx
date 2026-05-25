@@ -8,6 +8,8 @@ import {
   ClipboardPaste,
   Copy,
   Eraser,
+  Eye,
+  FileText,
   Sparkles,
 } from "lucide-react";
 import {
@@ -17,6 +19,7 @@ import {
   type CleanCategory,
   type CleanOptions,
 } from "@/lib/cleanText";
+import { renderPreview } from "@/lib/renderPreview";
 import { cn } from "@/lib/utils";
 
 const SAMPLE = `## Mathematical outcome
@@ -42,9 +45,14 @@ export function Cleaner() {
   const [input, setInput] = useState("");
   const [opts, setOpts] = useState<CleanOptions>(DEFAULT_OPTIONS);
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<"stripped" | "rendered">("stripped");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const cleaned = useMemo(() => cleanText(input, opts), [input, opts]);
+  const preview = useMemo(
+    () => (viewMode === "rendered" ? renderPreview(input) : null),
+    [input, viewMode]
+  );
 
   const inputWords = useMemo(
     () => (input.trim() ? input.trim().split(/\s+/).filter(Boolean).length : 0),
@@ -204,29 +212,50 @@ export function Cleaner() {
             title="Cleaned"
             stats={
               input
-                ? `${outputWords.toLocaleString()} words · ${cleaned.length.toLocaleString()} chars`
+                ? viewMode === "stripped"
+                  ? `${outputWords.toLocaleString()} words · ${cleaned.length.toLocaleString()} chars`
+                  : "rendered preview"
                 : "—"
             }
             accent
             right={
-              input ? (
-                <span className="text-xs text-muted-foreground">
-                  −{removedChars.toLocaleString()} chars
-                  {removedWords > 0 && ` · −${removedWords.toLocaleString()} words`}
-                </span>
-              ) : null
+              <div className="flex items-center gap-2">
+                {viewMode === "stripped" && input && (
+                  <span className="text-xs text-muted-foreground">
+                    −{removedChars.toLocaleString()} chars
+                    {removedWords > 0 &&
+                      ` · −${removedWords.toLocaleString()} words`}
+                  </span>
+                )}
+                <ViewToggle value={viewMode} onChange={setViewMode} />
+              </div>
             }
           />
-          <pre
-            className={cn(
-              "w-full flex-1 min-h-[320px] sm:min-h-[420px] overflow-auto px-5 py-4 m-0",
-              "text-[14px] leading-relaxed font-mono whitespace-pre-wrap break-words",
-              "scroll-thin",
-              cleaned ? "text-foreground" : "text-muted-foreground/50"
-            )}
-          >
-            {cleaned || "Cleaned output will appear here."}
-          </pre>
+          {viewMode === "stripped" ? (
+            <pre
+              className={cn(
+                "w-full flex-1 min-h-[320px] sm:min-h-[420px] overflow-auto px-5 py-4 m-0",
+                "text-[14px] leading-relaxed font-mono whitespace-pre-wrap break-words",
+                "scroll-thin",
+                cleaned ? "text-foreground" : "text-muted-foreground/50"
+              )}
+            >
+              {cleaned || "Cleaned output will appear here."}
+            </pre>
+          ) : (
+            <div className="w-full flex-1 min-h-[320px] sm:min-h-[420px] overflow-auto px-5 py-4 scroll-thin">
+              {preview && preview.html ? (
+                <div
+                  className="prose-mini"
+                  dangerouslySetInnerHTML={{ __html: preview.html }}
+                />
+              ) : (
+                <div className="text-muted-foreground/50 text-[14px]">
+                  Rendered preview will appear here.
+                </div>
+              )}
+            </div>
+          )}
           <PanelFooter>
             <SmallButton
               onClick={handleCopy}
@@ -313,6 +342,60 @@ function PanelFooter({ children }: { children: React.ReactNode }) {
     <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-border/60 bg-background/40">
       {children}
     </div>
+  );
+}
+
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: "stripped" | "rendered";
+  onChange: (v: "stripped" | "rendered") => void;
+}) {
+  return (
+    <div className="inline-flex items-center rounded-full bg-muted/60 ring-1 ring-border p-0.5">
+      <ViewToggleButton
+        active={value === "stripped"}
+        onClick={() => onChange("stripped")}
+        label="Stripped"
+        Icon={FileText}
+      />
+      <ViewToggleButton
+        active={value === "rendered"}
+        onClick={() => onChange("rendered")}
+        label="Rendered"
+        Icon={Eye}
+      />
+    </div>
+  );
+}
+
+function ViewToggleButton({
+  active,
+  onClick,
+  label,
+  Icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+    </button>
   );
 }
 
