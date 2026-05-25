@@ -217,16 +217,17 @@ export function Cleaner() {
               ) : null
             }
           />
-          <pre
+          <textarea
+            readOnly
+            value={cleaned}
+            placeholder="Cleaned output will appear here."
             className={cn(
-              "w-full flex-1 min-h-[320px] sm:min-h-[420px] overflow-auto px-5 py-4 m-0",
-              "text-[14px] leading-relaxed font-mono whitespace-pre-wrap break-words",
-              "scroll-thin",
-              cleaned ? "text-foreground" : "text-muted-foreground/50"
+              "w-full min-h-[320px] sm:min-h-[420px] resize-y bg-transparent px-5 py-4",
+              "text-[14px] leading-relaxed font-mono placeholder:text-muted-foreground/50",
+              "focus:outline-none scroll-thin",
+              cleaned ? "text-foreground" : "text-muted-foreground"
             )}
-          >
-            {cleaned || "Cleaned output will appear here."}
-          </pre>
+          />
           <PanelFooter>
             <SmallButton
               onClick={handleCopy}
