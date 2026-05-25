@@ -124,9 +124,8 @@ export function cleanText(
     s = s.replace(/(?<!_)_(?!\s)([^_\n]+?)(?<!\s)_(?!_)/g, "$1");
     // Strikethrough ~~x~~
     s = s.replace(/~~([\s\S]+?)~~/g, "$1");
-    // List markers
-    s = s.replace(/^\s*[-*+]\s+/gm, "");
-    s = s.replace(/^\s*\d+\.\s+/gm, "");
+    // NOTE: list markers ("- item", "* item", "1. item") are intentionally
+    // preserved — they're part of the prose structure the user wants kept.
     // Blockquotes
     s = s.replace(/^\s*>\s?/gm, "");
     // Horizontal rules: --- *** ___
@@ -172,7 +171,7 @@ export const CATEGORY_META: Record<
 > = {
   markdown: {
     label: "Markdown",
-    hint: "Headers, **bold**, *italic*, lists, blockquotes, code fences",
+    hint: "Headers, **bold**, *italic*, blockquotes, code fences. Bullets and numbering are kept.",
   },
   latex: {
     label: "LaTeX",
