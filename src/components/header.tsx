@@ -13,7 +13,7 @@ export function Header() {
               TexTools
             </div>
             <div className="text-[11px] text-muted-foreground">
-              Lexical richness &amp; readability
+              Text analysis toolkit
             </div>
           </div>
         </div>

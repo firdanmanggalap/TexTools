@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ClipboardPaste,
@@ -46,67 +46,34 @@ export function Analyzer() {
 
   const charCount = text.length;
 
-  const handleAnalyze = useCallback(async () => {
-    const value = text.trim();
-    if (!value) {
-      textareaRef.current?.focus();
-      return;
-    }
+  const runAnalysis = useCallback(
+    async (rawText: string) => {
+      const value = rawText.trim();
+      if (!value) return;
 
-    const wc = value.split(/\s+/).filter(Boolean).length;
-    const adjusted: Params = { ...params };
-    const notes: string[] = [];
-
-    if (wc < params.msttr * 2) {
-      adjusted.msttr = Math.max(1, Math.floor(wc / 2));
-      notes.push(`MSTTR window → ${adjusted.msttr}`);
-    }
-    if (wc < params.mattr) {
-      adjusted.mattr = Math.max(1, wc);
-      notes.push(`MATTR window → ${adjusted.mattr}`);
-    }
-    if (wc <= params.hdd) {
-      adjusted.hdd = Math.max(1, wc - 1);
-      notes.push(`HD-D draws → ${adjusted.hdd}`);
-    }
-
-    setNotice(notes.length ? `Auto-adjusted for short text: ${notes.join(", ")}` : null);
-    setError(null);
-    setLoading(true);
-
-    try {
-      const data = await analyzeText({
-        text: value,
-        msttr_window: adjusted.msttr,
-        mattr_window: adjusted.mattr,
-        hdd_draws: adjusted.hdd,
-      });
-      setResults(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  }, [text, params]);
-
-  const handlePaste = useCallback(async () => {
-    try {
-      const clip = await navigator.clipboard.readText();
-      if (!clip.trim()) {
-        setError("Clipboard is empty.");
-        return;
-      }
-      setText(clip);
-      // Trigger analyze with the pasted text
-      const value = clip.trim();
       const wc = value.split(/\s+/).filter(Boolean).length;
-      const adjusted: Params = {
-        msttr: Math.min(params.msttr, Math.max(1, Math.floor(wc / 2))),
-        mattr: Math.min(params.mattr, Math.max(1, wc)),
-        hdd: Math.min(params.hdd, Math.max(1, wc - 1)),
-      };
-      setLoading(true);
+      const adjusted: Params = { ...params };
+      const notes: string[] = [];
+
+      if (wc < params.msttr * 2) {
+        adjusted.msttr = Math.max(1, Math.floor(wc / 2));
+        notes.push(`MSTTR window → ${adjusted.msttr}`);
+      }
+      if (wc < params.mattr) {
+        adjusted.mattr = Math.max(1, wc);
+        notes.push(`MATTR window → ${adjusted.mattr}`);
+      }
+      if (wc <= params.hdd) {
+        adjusted.hdd = Math.max(1, wc - 1);
+        notes.push(`HD-D draws → ${adjusted.hdd}`);
+      }
+
+      setNotice(
+        notes.length ? `Auto-adjusted for short text: ${notes.join(", ")}` : null
+      );
       setError(null);
+      setLoading(true);
+
       try {
         const data = await analyzeText({
           text: value,
@@ -120,10 +87,50 @@ export function Analyzer() {
       } finally {
         setLoading(false);
       }
+    },
+    [params]
+  );
+
+  const handleAnalyze = useCallback(() => {
+    if (!text.trim()) {
+      textareaRef.current?.focus();
+      return;
+    }
+    void runAnalysis(text);
+  }, [text, runAnalysis]);
+
+  const handlePaste = useCallback(async () => {
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (!clip.trim()) {
+        setError("Clipboard is empty.");
+        return;
+      }
+      setText(clip);
+      await runAnalysis(clip);
     } catch {
       setError("Couldn't read from clipboard.");
     }
-  }, [params]);
+  }, [runAnalysis]);
+
+  // Handoff from /clean: if cleaner page stashed text in sessionStorage,
+  // pick it up on mount and auto-run analysis.
+  useEffect(() => {
+    try {
+      const handoff = sessionStorage.getItem("textools:handoff");
+      const autorun = sessionStorage.getItem("textools:handoff:autorun");
+      if (handoff) {
+        setText(handoff);
+        sessionStorage.removeItem("textools:handoff");
+        sessionStorage.removeItem("textools:handoff:autorun");
+        if (autorun) void runAnalysis(handoff);
+      }
+    } catch {
+      // sessionStorage unavailable — ignore
+    }
+    // Intentionally run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleClear = useCallback(() => {
     setText("");
