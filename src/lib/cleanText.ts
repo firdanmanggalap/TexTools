@@ -39,22 +39,33 @@ export function cleanText(
   let s = input;
 
   if (opts.latex) {
-    s = s.replace(/\\\[[\s\S]*?\\\]/g, "");
-    s = s.replace(/\$\$[\s\S]*?\$\$/g, "");
-    s = s.replace(/\\\([\s\S]*?\\\)/g, "");
-    // Inline $...$ — be conservative: only when tight (no space touching $)
-    s = s.replace(/(?<!\$)\$(?=\S)([^$\n]+?)(?<=\S)\$(?!\$)/g, "");
-    // \begin{env} ... \end{env}
+    // 1. Drop math environments entirely (\begin{equation}...\end{equation}) —
+    //    they're typically pure math with no prose-worthy content.
     s = s.replace(/\\begin\{[^}]+\}[\s\S]*?\\end\{[^}]+\}/g, "");
-    // Two-argument commands: \frac{a}{b} -> a b
-    s = s.replace(/\\[a-zA-Z]+\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1 $2");
-    // One-argument commands: \sqrt{x} -> x, \text{abc} -> abc
-    s = s.replace(/\\[a-zA-Z]+\s*\{([^{}]*)\}/g, "$1");
-    // Bare commands: \alpha, \neq, ...
-    s = s.replace(/\\[a-zA-Z]+\*?/g, "");
-    // Stray subscript/superscript markers
-    s = s.replace(/[_^]\{([^{}]*)\}/g, "$1");
-    s = s.replace(/[_^]\S/g, "");
+
+    // 2. Strip math delimiters but KEEP the inner expression so the sentence
+    //    doesn't end up with orphan punctuation like "becomes ." — the
+    //    command-stripping passes below will reduce the inner part to
+    //    readable variable/number tokens.
+    s = s.replace(/\\\[([\s\S]*?)\\\]/g, " $1 ");
+    s = s.replace(/\$\$([\s\S]*?)\$\$/g, " $1 ");
+    s = s.replace(/\\\(([\s\S]*?)\\\)/g, " $1 ");
+    // Inline $...$ — conservative: only when tight (no space touching $)
+    s = s.replace(/(?<!\$)\$(?=\S)([^$\n]+?)(?<=\S)\$(?!\$)/g, " $1 ");
+
+    // 3. Two-argument commands: \frac{a}{b} -> a b
+    s = s.replace(/\\[a-zA-Z]+\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, " $1 $2 ");
+    // 4. One-argument commands: \sqrt{x} -> x, \text{abc} -> abc
+    s = s.replace(/\\[a-zA-Z]+\s*\{([^{}]*)\}/g, " $1 ");
+    // 5. Bare commands: \alpha, \neq, ... — drop, but leave a space so
+    //    adjacent tokens (e.g. \frac's args) don't fuse together.
+    s = s.replace(/\\[a-zA-Z]+\*?/g, " ");
+    // 6. Subscript / superscript markers: keep their inner content with a
+    //    leading space so x^{2} doesn't fuse onto the surrounding character.
+    s = s.replace(/[_^]\{([^{}]*)\}/g, " $1");
+    s = s.replace(/[_^](\w)/g, " $1");
+    // 7. Drop leftover lone curly braces (use space — same fusion concern).
+    s = s.replace(/[{}]/g, " ");
   }
 
   if (opts.htmlEmoji) {
@@ -132,6 +143,10 @@ export function cleanText(
       .join("\n");
     // Collapse multiple in-line spaces (but keep newlines)
     s = s.replace(/[ \t]{2,}/g, " ");
+    // Strip spaces before sentence-final / clause punctuation
+    s = s.replace(/[ \t]+([.,;:!?)\]])/g, "$1");
+    // Strip spaces right after opening brackets
+    s = s.replace(/([(\[])[ \t]+/g, "$1");
     // Collapse 3+ blank lines into a single blank line
     s = s.replace(/\n{3,}/g, "\n\n");
     s = s.trim();
