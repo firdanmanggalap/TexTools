@@ -27,17 +27,11 @@ If each centre's range (R) is the same in all directions, its market area become
 - See [Christaller 1933](https://example.com) for more.
 - Citations like [1] and (Smith, 2020) are common.
 
-| Region | Range | Threshold |
-|--------|-------|-----------|
-| Urban  | 5     | 1000      |
-| Rural  | 50    | 200       |
-
 ➤ This bullet has an emoji prefix.`;
 
 const ALL_CATEGORIES: CleanCategory[] = [
   "markdown",
   "latex",
-  "tables",
   "citations",
   "htmlEmoji",
   "whitespace",
@@ -72,7 +66,6 @@ export function Cleaner() {
     setOpts(() => ({
       markdown: on,
       latex: on,
-      tables: on,
       citations: on,
       htmlEmoji: on,
       whitespace: on,
@@ -276,10 +269,10 @@ function Hero() {
         Strip formatting before you analyze.
       </h1>
       <p className="text-muted-foreground max-w-2xl">
-        Remove markdown markers, LaTeX commands, tables, citations, HTML tags,
-        and noisy whitespace so the analyzer sees clean prose only. Toggle the
-        categories you want stripped, paste your text, and the cleaned output
-        updates in real time.
+        Remove markdown markers, LaTeX commands, citations, HTML tags, and
+        noisy whitespace so the analyzer sees clean prose only. Tables are
+        kept intact. Toggle the categories you want stripped — the cleaned
+        output updates in real time.
       </p>
     </div>
   );

@@ -1,7 +1,6 @@
 export type CleanCategory =
   | "markdown"
   | "latex"
-  | "tables"
   | "citations"
   | "htmlEmoji"
   | "whitespace";
@@ -9,7 +8,6 @@ export type CleanCategory =
 export interface CleanOptions {
   markdown: boolean;
   latex: boolean;
-  tables: boolean;
   citations: boolean;
   htmlEmoji: boolean;
   whitespace: boolean;
@@ -18,7 +16,6 @@ export interface CleanOptions {
 export const DEFAULT_OPTIONS: CleanOptions = {
   markdown: true,
   latex: true,
-  tables: true,
   citations: true,
   htmlEmoji: true,
   whitespace: true,
@@ -58,19 +55,6 @@ export function cleanText(
     // Stray subscript/superscript markers
     s = s.replace(/[_^]\{([^{}]*)\}/g, "$1");
     s = s.replace(/[_^]\S/g, "");
-  }
-
-  if (opts.tables) {
-    // Markdown table separator row: |---|---|, optionally with :---
-    s = s.replace(/^\s*\|?\s*:?-{2,}:?(?:\s*\|\s*:?-{2,}:?)+\s*\|?\s*$/gm, "");
-    // Table row: strip pipes, separate cells with spaces
-    s = s.replace(/^\s*\|(.+)\|\s*$/gm, (_m, content: string) =>
-      content
-        .split("|")
-        .map((c) => c.trim())
-        .filter(Boolean)
-        .join(" ")
-    );
   }
 
   if (opts.htmlEmoji) {
@@ -178,10 +162,6 @@ export const CATEGORY_META: Record<
   latex: {
     label: "LaTeX",
     hint: "Inline & display math, \\frac{}{}, \\sqrt{}, environments",
-  },
-  tables: {
-    label: "Tables",
-    hint: "Markdown pipe tables and separator rows",
   },
   citations: {
     label: "Citations & URLs",
