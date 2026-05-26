@@ -49,3 +49,57 @@ export async function analyzeText(
 
   return data;
 }
+
+// ---- Kruskal-Wallis ----
+
+export interface KruskalRequest {
+  csv_text: string;
+  group_col: string;
+  metric_cols: string[];
+  alpha?: number;
+}
+
+export interface KruskalGroupStats {
+  n: number;
+  median: number;
+  mean: number;
+  q1: number;
+  q3: number;
+  min: number;
+  max: number;
+  values: number[];
+}
+
+export interface KruskalMetricResult {
+  metric: string;
+  h_stat?: number;
+  p_value?: number;
+  df?: number;
+  alpha?: number;
+  significant?: boolean;
+  groups?: Record<string, KruskalGroupStats>;
+  error?: string;
+}
+
+export interface KruskalResponse {
+  results: KruskalMetricResult[];
+  group_order: string[];
+  alpha: number;
+}
+
+export async function runKruskal(
+  payload: KruskalRequest
+): Promise<KruskalResponse> {
+  const res = await fetch(`${API_BASE}/api/kruskal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json()) as KruskalResponse | AnalyzeError;
+  if (!res.ok || "error" in data) {
+    throw new Error(
+      "error" in data ? data.error : `Request failed (${res.status})`
+    );
+  }
+  return data;
+}

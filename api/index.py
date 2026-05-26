@@ -24,6 +24,11 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from lexicalrichness import LexicalRichness  # noqa: E402
 import textstat  # noqa: E402
 import re  # noqa: E402
+import csv  # noqa: E402
+import io  # noqa: E402
+import statistics  # noqa: E402
+from typing import Dict, List  # noqa: E402
+from scipy import stats as scipy_stats  # noqa: E402
 
 app = FastAPI()
 
@@ -103,6 +108,133 @@ async def analyze(request: Request):
         }
 
         return response
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _quantile(sorted_vals: List[float], q: float) -> float:
+    """Linear-interp quantile (type 7 — matches numpy/R default)."""
+    n = len(sorted_vals)
+    if n == 0:
+        return 0.0
+    if n == 1:
+        return float(sorted_vals[0])
+    h = (n - 1) * q
+    floor_h = int(h)
+    if floor_h + 1 < n:
+        return float(
+            sorted_vals[floor_h]
+            + (h - floor_h) * (sorted_vals[floor_h + 1] - sorted_vals[floor_h])
+        )
+    return float(sorted_vals[floor_h])
+
+
+@app.post("/api/kruskal")
+async def kruskal(request: Request):
+    try:
+        data = await request.json()
+        csv_text = (data.get("csv_text") or "").strip()
+        group_col = (data.get("group_col") or "level").strip()
+        metric_cols = data.get("metric_cols") or []
+        alpha = float(data.get("alpha", 0.05))
+
+        if not csv_text:
+            return {"error": "Empty CSV"}
+        if not metric_cols:
+            return {"error": "No metric columns selected"}
+
+        reader = csv.DictReader(io.StringIO(csv_text))
+        rows = list(reader)
+        if not rows:
+            return {"error": "CSV has no data rows"}
+
+        headers = reader.fieldnames or []
+        if group_col not in headers:
+            return {"error": f"Group column '{group_col}' not found in CSV header"}
+
+        # Bucket rows by group, preserving first-seen order
+        groups_order: List[str] = []
+        groups_rows: Dict[str, List[Dict[str, str]]] = {}
+        for row in rows:
+            g = (row.get(group_col) or "").strip()
+            if not g:
+                continue
+            if g not in groups_rows:
+                groups_rows[g] = []
+                groups_order.append(g)
+            groups_rows[g].append(row)
+
+        if len(groups_order) < 2:
+            return {
+                "error": f"Need at least 2 groups in '{group_col}', found {len(groups_order)}"
+            }
+
+        results = []
+        for metric in metric_cols:
+            if metric not in headers:
+                results.append(
+                    {"metric": metric, "error": f"Column '{metric}' not in CSV"}
+                )
+                continue
+
+            group_values: Dict[str, List[float]] = {}
+            for gname in groups_order:
+                vals: List[float] = []
+                for r in groups_rows[gname]:
+                    raw = (r.get(metric) or "").strip()
+                    if not raw:
+                        continue
+                    # Tolerate both "." and "," decimals
+                    try:
+                        vals.append(float(raw.replace(",", ".")))
+                    except ValueError:
+                        continue
+                if vals:
+                    group_values[gname] = vals
+
+            if len(group_values) < 2:
+                results.append(
+                    {
+                        "metric": metric,
+                        "error": f"Need numeric values in at least 2 groups for '{metric}'",
+                    }
+                )
+                continue
+
+            stat, p_value = scipy_stats.kruskal(*group_values.values())
+
+            group_stats = {}
+            for gname, vals in group_values.items():
+                sorted_vals = sorted(vals)
+                group_stats[gname] = {
+                    "n": len(sorted_vals),
+                    "median": float(statistics.median(sorted_vals)),
+                    "mean": float(statistics.mean(sorted_vals)),
+                    "q1": _quantile(sorted_vals, 0.25),
+                    "q3": _quantile(sorted_vals, 0.75),
+                    "min": float(sorted_vals[0]),
+                    "max": float(sorted_vals[-1]),
+                    "values": [float(v) for v in sorted_vals],
+                }
+
+            results.append(
+                {
+                    "metric": metric,
+                    "h_stat": float(stat),
+                    "p_value": float(p_value),
+                    "df": len(group_values) - 1,
+                    "alpha": alpha,
+                    "significant": bool(p_value < alpha),
+                    "groups": group_stats,
+                }
+            )
+
+        return {
+            "results": results,
+            "group_order": groups_order,
+            "alpha": alpha,
+        }
 
     except Exception as e:
         return {"error": str(e)}
