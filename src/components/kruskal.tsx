@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ClipboardPaste,
   Copy,
+  Download,
   Eraser,
   Loader2,
   Play,
@@ -334,13 +335,19 @@ export function Kruskal() {
       )}
 
       {results && results.results.length > 0 && (
-        <ResultsView response={results} />
+        <ResultsView response={results} groupCol={groupCol} />
       )}
     </div>
   );
 }
 
-function ResultsView({ response }: { response: KruskalResponse }) {
+function ResultsView({
+  response,
+  groupCol,
+}: {
+  response: KruskalResponse;
+  groupCol: string;
+}) {
   const { results, group_order, alpha } = response;
   const [copiedTable, setCopiedTable] = useState(false);
 
@@ -481,6 +488,7 @@ function ResultsView({ response }: { response: KruskalResponse }) {
               <MetricDetail
                 key={r.metric}
                 metric={r.metric}
+                groupCol={groupCol}
                 groups={r.groups!}
                 groupOrder={group_order}
                 pValue={r.p_value}
@@ -495,18 +503,27 @@ function ResultsView({ response }: { response: KruskalResponse }) {
 
 function MetricDetail({
   metric,
+  groupCol,
   groups,
   groupOrder,
   pValue,
   significant,
 }: {
   metric: string;
+  groupCol: string;
   groups: Record<string, KruskalGroupStats>;
   groupOrder: string[];
   pValue: number | undefined;
   significant: boolean | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const handleDownload = useCallback(() => {
+    if (svgRef.current) {
+      downloadSvgAsPng(svgRef.current, `kruskal_${metric}_boxplot.png`);
+    }
+  }, [metric]);
 
   return (
     <div className="rounded-xl ring-1 ring-border bg-card/40 p-4 flex flex-col gap-3">
@@ -528,8 +545,27 @@ function MetricDetail({
         >
           {significant ? "Significant" : "n.s."}
         </span>
+        <button
+          type="button"
+          onClick={handleDownload}
+          title="Download box plot as PNG"
+          aria-label="Download box plot"
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium ring-1",
+            "bg-transparent text-muted-foreground ring-border hover:text-foreground hover:bg-muted transition-colors"
+          )}
+        >
+          <Download className="h-3 w-3" />
+          PNG
+        </button>
       </div>
-      <BoxPlot groups={groups} groupOrder={groupOrder} />
+      <BoxPlot
+        ref={svgRef}
+        metric={metric}
+        groupCol={groupCol}
+        groups={groups}
+        groupOrder={groupOrder}
+      />
       <button
         type="button"
         onClick={() => setExpanded((s) => !s)}
@@ -596,52 +632,99 @@ function StatsTable({
   );
 }
 
-function BoxPlot({
+// Style tokens used by both on-screen render AND PNG export. They're plain
+// hex so XMLSerializer output doesn't carry CSS-variable references that
+// the off-screen <Image> wouldn't resolve.
+const BOX_FILL = "#3bba9c";
+const BOX_STROKE = "#3bba9c";
+const MEDIAN_STROKE = "#f59e0b"; // amber-500 — like matplotlib's orange median
+const AXIS_COLOR = "#e6e8ef";
+const GRID_COLOR = "#e6e8ef";
+const BG_COLOR = "#11151f";
+
+const BoxPlot = function BoxPlot({
+  ref,
+  metric,
+  groupCol,
   groups,
   groupOrder,
-  height = 180,
+  height = 240,
 }: {
+  ref?: React.Ref<SVGSVGElement>;
+  metric: string;
+  groupCol: string;
   groups: Record<string, KruskalGroupStats>;
   groupOrder: string[];
   height?: number;
 }) {
-  const width = 480;
-  const padL = 38;
-  const padR = 10;
-  const padT = 8;
-  const padB = 26;
+  const width = 520;
+  const padL = 56;
+  const padR = 18;
+  const padT = 36;
+  const padB = 48;
   const plotW = width - padL - padR;
   const plotH = height - padT - padB;
 
   const valid = groupOrder.filter((g) => groups[g]);
   if (valid.length === 0) return null;
 
-  const allVals = valid.flatMap((g) => [groups[g].min, groups[g].max]);
-  const dataMin = Math.min(...allVals);
-  const dataMax = Math.max(...allVals);
+  // Tukey outliers come from raw values (we have them per-group).
+  const outliersByGroup: Record<string, number[]> = {};
+  let dataMin = Infinity;
+  let dataMax = -Infinity;
+  for (const name of valid) {
+    const g = groups[name];
+    const iqr = g.q3 - g.q1;
+    const lo = g.q1 - 1.5 * iqr;
+    const hi = g.q3 + 1.5 * iqr;
+    const outliers = g.values.filter((v) => v < lo || v > hi);
+    const inliers = g.values.filter((v) => v >= lo && v <= hi);
+    outliersByGroup[name] = outliers;
+    const whiskerLo = inliers.length ? Math.min(...inliers) : g.min;
+    const whiskerHi = inliers.length ? Math.max(...inliers) : g.max;
+    dataMin = Math.min(dataMin, whiskerLo, g.min);
+    dataMax = Math.max(dataMax, whiskerHi, g.max);
+  }
   const range = dataMax - dataMin || 1;
   const pad = range * 0.08;
   const yLo = dataMin - pad;
   const yHi = dataMax + pad;
 
-  const y = (v: number) =>
-    padT + ((yHi - v) / (yHi - yLo)) * plotH;
+  const y = (v: number) => padT + ((yHi - v) / (yHi - yLo)) * plotH;
 
   const N = valid.length;
   const slotW = plotW / N;
-  const boxW = Math.min(slotW * 0.55, 56);
+  const boxW = Math.min(slotW * 0.5, 60);
 
-  const tickCount = 4;
-  const ticks = Array.from({ length: tickCount + 1 }, (_, i) =>
-    yLo + ((yHi - yLo) * i) / tickCount
+  const tickCount = 5;
+  const ticks = Array.from(
+    { length: tickCount + 1 },
+    (_, i) => yLo + ((yHi - yLo) * i) / tickCount
   );
+  const tickDecimals = range >= 10 ? 1 : 2;
 
   return (
     <svg
+      ref={ref}
+      xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${width} ${height}`}
-      className="w-full h-auto text-muted-foreground"
+      className="w-full h-auto"
       preserveAspectRatio="xMidYMid meet"
+      data-bg={BG_COLOR}
     >
+      {/* Title */}
+      <text
+        x={width / 2}
+        y={20}
+        textAnchor="middle"
+        fontSize="13"
+        fontWeight="600"
+        fill={AXIS_COLOR}
+      >
+        Distribution of {metric} by {groupCol}
+      </text>
+
+      {/* Y-axis grid + tick labels */}
       {ticks.map((t, i) => (
         <g key={i}>
           <line
@@ -649,61 +732,111 @@ function BoxPlot({
             x2={width - padR}
             y1={y(t)}
             y2={y(t)}
-            stroke="currentColor"
-            strokeOpacity={0.08}
+            stroke={GRID_COLOR}
+            strokeOpacity={0.12}
+            strokeDasharray="3 4"
           />
           <text
-            x={padL - 6}
-            y={y(t) + 3}
+            x={padL - 8}
+            y={y(t) + 4}
             textAnchor="end"
-            fontSize="9"
-            fill="currentColor"
-            opacity={0.55}
+            fontSize="10"
+            fill={AXIS_COLOR}
+            opacity={0.7}
           >
-            {fmt(t, range >= 10 ? 1 : 2)}
+            {fmt(t, tickDecimals)}
           </text>
         </g>
       ))}
 
+      {/* Plot frame */}
+      <line
+        x1={padL}
+        x2={padL}
+        y1={padT}
+        y2={padT + plotH}
+        stroke={AXIS_COLOR}
+        strokeOpacity={0.4}
+      />
+      <line
+        x1={padL}
+        x2={width - padR}
+        y1={padT + plotH}
+        y2={padT + plotH}
+        stroke={AXIS_COLOR}
+        strokeOpacity={0.4}
+      />
+
+      {/* Axis labels */}
+      <text
+        x={14}
+        y={padT + plotH / 2}
+        textAnchor="middle"
+        fontSize="11"
+        fill={AXIS_COLOR}
+        opacity={0.85}
+        transform={`rotate(-90 14 ${padT + plotH / 2})`}
+      >
+        {metric}
+      </text>
+      <text
+        x={padL + plotW / 2}
+        y={height - 8}
+        textAnchor="middle"
+        fontSize="11"
+        fill={AXIS_COLOR}
+        opacity={0.85}
+      >
+        {groupCol}
+      </text>
+
+      {/* Boxes */}
       {valid.map((name, idx) => {
         const g = groups[name];
         const cx = padL + slotW * (idx + 0.5);
         const x1 = cx - boxW / 2;
+        const iqr = g.q3 - g.q1;
+        const lo = g.q1 - 1.5 * iqr;
+        const hi = g.q3 + 1.5 * iqr;
+        const inliers = g.values.filter((v) => v >= lo && v <= hi);
+        const whiskerLo = inliers.length ? Math.min(...inliers) : g.min;
+        const whiskerHi = inliers.length ? Math.max(...inliers) : g.max;
+
         return (
           <g key={name}>
             {/* whiskers */}
             <line
               x1={cx}
               x2={cx}
-              y1={y(g.min)}
+              y1={y(whiskerLo)}
               y2={y(g.q1)}
-              stroke="currentColor"
-              strokeOpacity={0.55}
+              stroke={AXIS_COLOR}
+              strokeOpacity={0.65}
             />
             <line
               x1={cx}
               x2={cx}
               y1={y(g.q3)}
-              y2={y(g.max)}
-              stroke="currentColor"
-              strokeOpacity={0.55}
+              y2={y(whiskerHi)}
+              stroke={AXIS_COLOR}
+              strokeOpacity={0.65}
             />
-            {/* caps */}
+            {/* whisker caps */}
             <line
-              x1={cx - boxW * 0.25}
-              x2={cx + boxW * 0.25}
-              y1={y(g.min)}
-              y2={y(g.min)}
-              stroke="currentColor"
-              strokeOpacity={0.55}
+              x1={cx - boxW * 0.22}
+              x2={cx + boxW * 0.22}
+              y1={y(whiskerLo)}
+              y2={y(whiskerLo)}
+              stroke={AXIS_COLOR}
+              strokeOpacity={0.65}
             />
             <line
-              x1={cx - boxW * 0.25}
-              x2={cx + boxW * 0.25}
-              y1={y(g.max)}
-              y2={y(g.max)}
-              stroke="currentColor"
-              strokeOpacity={0.55}
+              x1={cx - boxW * 0.22}
+              x2={cx + boxW * 0.22}
+              y1={y(whiskerHi)}
+              y2={y(whiskerHi)}
+              stroke={AXIS_COLOR}
+              strokeOpacity={0.65}
             />
             {/* box */}
             <rect
@@ -711,10 +844,10 @@ function BoxPlot({
               y={y(g.q3)}
               width={boxW}
               height={Math.max(1, y(g.q1) - y(g.q3))}
-              fill="var(--color-accent)"
-              fillOpacity={0.15}
-              stroke="var(--color-accent)"
-              strokeOpacity={0.7}
+              fill={BOX_FILL}
+              fillOpacity={0.22}
+              stroke={BOX_STROKE}
+              strokeOpacity={0.85}
             />
             {/* median */}
             <line
@@ -722,34 +855,110 @@ function BoxPlot({
               x2={x1 + boxW}
               y1={y(g.median)}
               y2={y(g.median)}
-              stroke="var(--color-accent)"
+              stroke={MEDIAN_STROKE}
               strokeWidth={2}
             />
+            {/* outliers */}
+            {outliersByGroup[name].map((o, oi) => (
+              <circle
+                key={oi}
+                cx={cx}
+                cy={y(o)}
+                r={3}
+                fill="none"
+                stroke={AXIS_COLOR}
+                strokeOpacity={0.7}
+              />
+            ))}
+            {/* group label */}
             <text
               x={cx}
-              y={height - 8}
+              y={padT + plotH + 18}
               textAnchor="middle"
-              fontSize="10"
-              fill="currentColor"
-              opacity={0.8}
+              fontSize="11"
+              fill={AXIS_COLOR}
+              opacity={0.9}
             >
               {name}
             </text>
+            {/* median value label */}
             <text
               x={cx}
               y={y(g.median) - 4}
               textAnchor="middle"
-              fontSize="9"
-              fill="var(--color-accent)"
-              opacity={0.9}
+              fontSize="10"
+              fill={MEDIAN_STROKE}
+              opacity={0.95}
             >
-              {fmt(g.median, range >= 10 ? 1 : 2)}
+              {fmt(g.median, tickDecimals)}
             </text>
           </g>
         );
       })}
     </svg>
   );
+};
+
+async function downloadSvgAsPng(svg: SVGSVGElement, filename: string) {
+  const bg = svg.dataset.bg || BG_COLOR;
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+  // Resolve viewBox dimensions
+  const vb = svg.viewBox.baseVal;
+  const w = vb && vb.width ? vb.width : svg.clientWidth || 520;
+  const h = vb && vb.height ? vb.height : svg.clientHeight || 240;
+
+  // Inject background as the first child so the PNG isn't transparent
+  const bgRect = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "rect"
+  );
+  bgRect.setAttribute("width", String(w));
+  bgRect.setAttribute("height", String(h));
+  bgRect.setAttribute("fill", bg);
+  clone.insertBefore(bgRect, clone.firstChild);
+
+  const xml =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = (e) => reject(e);
+      img.src = url;
+    });
+
+    const scale = 2; // ~2x pixel density for crisper PNG
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const pngBlob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/png")
+    );
+    if (!pngBlob) return;
+    const dlUrl = URL.createObjectURL(pngBlob);
+    const a = document.createElement("a");
+    a.href = dlUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(dlUrl);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function Hero() {
