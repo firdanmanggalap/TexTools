@@ -39,7 +39,12 @@ export function Analyzer() {
   const [params, setParams] = useState<Params>(DEFAULTS);
   const [showParams, setShowParams] = useState(false);
   const [showPinPicker, setShowPinPicker] = useState(false);
-  const { pinned, toggle: togglePinned, clear: clearPinned } = usePinnedMetrics();
+  const {
+    pinned,
+    toggle: togglePinned,
+    move: movePinned,
+    clear: clearPinned,
+  } = usePinnedMetrics();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<AnalyzeResponse | null>(null);
@@ -204,6 +209,7 @@ export function Analyzer() {
           <PinnedCustomizer
             pinned={pinned}
             onToggle={togglePinned}
+            onMove={movePinned}
             onClear={clearPinned}
             onClose={() => setShowPinPicker(false)}
           />
