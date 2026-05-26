@@ -13,7 +13,12 @@ import {
   Loader2,
   Play,
 } from "lucide-react";
-import { runKruskal, type KruskalGroupStats, type KruskalResponse } from "@/lib/api";
+import {
+  runKruskal,
+  type KruskalGroupStats,
+  type KruskalPairwise,
+  type KruskalResponse,
+} from "@/lib/api";
 import { parseCsv, type ParsedCsv } from "@/lib/csvParse";
 import { cn } from "@/lib/utils";
 
@@ -493,6 +498,8 @@ function ResultsView({
                 groupOrder={group_order}
                 pValue={r.p_value}
                 significant={r.significant}
+                pairwise={r.pairwise}
+                alpha={alpha}
               />
             ))}
         </div>
@@ -508,6 +515,8 @@ function MetricDetail({
   groupOrder,
   pValue,
   significant,
+  pairwise,
+  alpha,
 }: {
   metric: string;
   groupCol: string;
@@ -515,6 +524,8 @@ function MetricDetail({
   groupOrder: string[];
   pValue: number | undefined;
   significant: boolean | undefined;
+  pairwise: KruskalPairwise[] | undefined;
+  alpha: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -566,6 +577,14 @@ function MetricDetail({
         groups={groups}
         groupOrder={groupOrder}
       />
+      {pairwise && pairwise.length > 0 && (
+        <PairwiseTable
+          pairs={pairwise}
+          alpha={alpha}
+          metric={metric}
+          omnibusSignificant={significant}
+        />
+      )}
       <button
         type="button"
         onClick={() => setExpanded((s) => !s)}
@@ -580,6 +599,140 @@ function MetricDetail({
         {expanded ? "Hide" : "Show"} group stats
       </button>
       {expanded && <StatsTable groups={groups} groupOrder={groupOrder} />}
+    </div>
+  );
+}
+
+function PairwiseTable({
+  pairs,
+  alpha,
+  metric,
+  omnibusSignificant,
+}: {
+  pairs: KruskalPairwise[];
+  alpha: number;
+  metric: string;
+  omnibusSignificant: boolean | undefined;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    const lines: string[] = [];
+    lines.push(["Pair", "U", "p (raw)", "p (Bonferroni)", "Significant"].join("\t"));
+    for (const p of pairs) {
+      if (p.error) {
+        lines.push([`${p.a} vs ${p.b}`, "—", "—", "—", p.error].join("\t"));
+      } else {
+        lines.push(
+          [
+            `${p.a} vs ${p.b}`,
+            fmt(p.u_stat, 2),
+            fmtP(p.p_value),
+            fmtP(p.p_adjusted),
+            p.significant ? "Yes" : "No",
+          ].join("\t")
+        );
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // ignore
+    }
+  }, [pairs]);
+
+  return (
+    <div className="rounded-lg ring-1 ring-border/60 bg-background/30 p-2.5 flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-medium text-muted-foreground/80 uppercase tracking-wider">
+          Pairwise · Mann-Whitney U · Bonferroni
+        </span>
+        {omnibusSignificant === false && (
+          <span className="text-[10px] text-muted-foreground/60 italic">
+            (omnibus n.s. — interpret cautiously)
+          </span>
+        )}
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={handleCopy}
+          title={`Copy pairwise table for ${metric}`}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 transition-colors",
+            copied
+              ? "bg-accent text-accent-foreground ring-accent/40"
+              : "bg-transparent text-muted-foreground ring-border hover:text-foreground hover:bg-muted"
+          )}
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3" /> Copied
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" /> Copy
+            </>
+          )}
+        </button>
+      </div>
+      <table className="w-full text-xs">
+        <thead className="text-left text-[10px] text-muted-foreground uppercase tracking-wider">
+          <tr>
+            <th className="py-1 pr-3 font-medium">Pair</th>
+            <th className="py-1 px-2 font-medium text-right">U</th>
+            <th className="py-1 px-2 font-medium text-right">p (raw)</th>
+            <th className="py-1 px-2 font-medium text-right">
+              p (adj)
+            </th>
+            <th className="py-1 pl-2 font-medium text-right">α = {fmt(alpha, 2)}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/40">
+          {pairs.map((p, idx) => (
+            <tr key={`${p.a}-${p.b}-${idx}`}>
+              <td className="py-1 pr-3 text-foreground">
+                <span className="font-medium">{p.a}</span>
+                <span className="text-muted-foreground/60"> vs </span>
+                <span className="font-medium">{p.b}</span>
+              </td>
+              {p.error ? (
+                <td
+                  colSpan={4}
+                  className="py-1 px-2 text-rose-300 text-[11px]"
+                >
+                  {p.error}
+                </td>
+              ) : (
+                <>
+                  <td className="py-1 px-2 text-right font-mono tabular-nums text-muted-foreground">
+                    {fmt(p.u_stat, 2)}
+                  </td>
+                  <td className="py-1 px-2 text-right font-mono tabular-nums">
+                    {fmtP(p.p_value)}
+                  </td>
+                  <td className="py-1 px-2 text-right font-mono tabular-nums">
+                    {fmtP(p.p_adjusted)}
+                  </td>
+                  <td className="py-1 pl-2 text-right">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ring-1",
+                        p.significant
+                          ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/20"
+                          : "bg-muted text-muted-foreground ring-border"
+                      )}
+                    >
+                      {p.significant ? "Sig." : "n.s."}
+                    </span>
+                  </td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

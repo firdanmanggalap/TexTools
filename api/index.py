@@ -204,6 +204,35 @@ async def kruskal(request: Request):
 
             stat, p_value = scipy_stats.kruskal(*group_values.values())
 
+            # Pairwise Mann-Whitney U post-hoc (Bonferroni corrected)
+            pair_names = list(group_values.keys())
+            num_comparisons = len(pair_names) * (len(pair_names) - 1) // 2
+            pairwise = []
+            for i in range(len(pair_names)):
+                for j in range(i + 1, len(pair_names)):
+                    a, b = pair_names[i], pair_names[j]
+                    try:
+                        u_stat, raw_p = scipy_stats.mannwhitneyu(
+                            group_values[a],
+                            group_values[b],
+                            alternative="two-sided",
+                        )
+                        adj_p = min(1.0, float(raw_p) * num_comparisons)
+                        pairwise.append(
+                            {
+                                "a": a,
+                                "b": b,
+                                "u_stat": float(u_stat),
+                                "p_value": float(raw_p),
+                                "p_adjusted": adj_p,
+                                "significant": bool(adj_p < alpha),
+                            }
+                        )
+                    except Exception as pair_err:
+                        pairwise.append(
+                            {"a": a, "b": b, "error": str(pair_err)}
+                        )
+
             group_stats = {}
             for gname, vals in group_values.items():
                 sorted_vals = sorted(vals)
@@ -227,6 +256,9 @@ async def kruskal(request: Request):
                     "alpha": alpha,
                     "significant": bool(p_value < alpha),
                     "groups": group_stats,
+                    "pairwise": pairwise,
+                    "pairwise_correction": "bonferroni",
+                    "pairwise_test": "mannwhitneyu_two_sided",
                 }
             )
 

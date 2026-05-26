@@ -70,6 +70,16 @@ export interface KruskalGroupStats {
   values: number[];
 }
 
+export interface KruskalPairwise {
+  a: string;
+  b: string;
+  u_stat?: number;
+  p_value?: number;
+  p_adjusted?: number;
+  significant?: boolean;
+  error?: string;
+}
+
 export interface KruskalMetricResult {
   metric: string;
   h_stat?: number;
@@ -78,6 +88,9 @@ export interface KruskalMetricResult {
   alpha?: number;
   significant?: boolean;
   groups?: Record<string, KruskalGroupStats>;
+  pairwise?: KruskalPairwise[];
+  pairwise_test?: string;
+  pairwise_correction?: string;
   error?: string;
 }
 
