@@ -391,7 +391,7 @@ function ResultsView({
           <div className="flex items-center gap-1.5">
             <BarChart3 className="h-3.5 w-3.5 text-accent" />
             <h2 className="text-sm font-semibold tracking-tight text-foreground">
-              Test results
+              Kruskal-Wallis results
             </h2>
           </div>
           <div className="h-px flex-1 bg-border" />
@@ -498,13 +498,142 @@ function ResultsView({
                 groupOrder={group_order}
                 pValue={r.p_value}
                 significant={r.significant}
-                pairwise={r.pairwise}
-                alpha={alpha}
               />
             ))}
         </div>
       </section>
+
+      {/* Pairwise post-hoc — separate from omnibus + viz */}
+      {results.some((r) => r.pairwise && r.pairwise.length > 0) && (
+        <PairwiseSection results={results} alpha={alpha} />
+      )}
     </div>
+  );
+}
+
+function PairwiseSection({
+  results,
+  alpha,
+}: {
+  results: KruskalResponse["results"];
+  alpha: number;
+}) {
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const eligible = results.filter(
+    (r) => r.pairwise && r.pairwise.length > 0 && !r.error
+  );
+
+  const copyAllPairwise = useCallback(async () => {
+    const lines: string[] = [];
+    lines.push(
+      [
+        "Metric",
+        "Pair",
+        "U",
+        "p (raw)",
+        "p (Bonferroni)",
+        "Significant",
+      ].join("\t")
+    );
+    for (const r of eligible) {
+      for (const p of r.pairwise ?? []) {
+        if (p.error) {
+          lines.push(
+            [r.metric, `${p.a} vs ${p.b}`, "—", "—", "—", p.error].join("\t")
+          );
+        } else {
+          lines.push(
+            [
+              r.metric,
+              `${p.a} vs ${p.b}`,
+              fmt(p.u_stat, 2),
+              fmtP(p.p_value),
+              fmtP(p.p_adjusted),
+              p.significant ? "Yes" : "No",
+            ].join("\t")
+          );
+        }
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 1400);
+    } catch {
+      // ignore
+    }
+  }, [eligible]);
+
+  return (
+    <section>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-1.5">
+          <BarChart3 className="h-3.5 w-3.5 text-accent" />
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+            Pairwise comparisons
+          </h2>
+        </div>
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs text-muted-foreground">
+          Mann-Whitney U · Bonferroni · α = {fmt(alpha, 2)}
+        </span>
+        <button
+          type="button"
+          onClick={copyAllPairwise}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium ring-1 transition-colors",
+            copiedAll
+              ? "bg-accent text-accent-foreground ring-accent/40"
+              : "bg-accent-soft text-accent ring-accent/30 hover:bg-accent/20"
+          )}
+        >
+          {copiedAll ? (
+            <>
+              <Check className="h-3 w-3" /> Copied all
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" /> Copy all
+            </>
+          )}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {eligible.map((r) => (
+          <div
+            key={r.metric}
+            className="rounded-xl ring-1 ring-border bg-card/40 p-4 flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm font-medium text-foreground">
+                {r.metric}
+              </span>
+              <div className="flex-1" />
+              <span className="text-[11px] text-muted-foreground font-mono">
+                omnibus p = {fmtP(r.p_value)}
+              </span>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1",
+                  r.significant
+                    ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/20"
+                    : "bg-muted text-muted-foreground ring-border"
+                )}
+              >
+                {r.significant ? "Significant" : "n.s."}
+              </span>
+            </div>
+            <PairwiseTable
+              pairs={r.pairwise!}
+              alpha={alpha}
+              metric={r.metric}
+              omnibusSignificant={r.significant}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -515,8 +644,6 @@ function MetricDetail({
   groupOrder,
   pValue,
   significant,
-  pairwise,
-  alpha,
 }: {
   metric: string;
   groupCol: string;
@@ -524,8 +651,6 @@ function MetricDetail({
   groupOrder: string[];
   pValue: number | undefined;
   significant: boolean | undefined;
-  pairwise: KruskalPairwise[] | undefined;
-  alpha: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -577,14 +702,6 @@ function MetricDetail({
         groups={groups}
         groupOrder={groupOrder}
       />
-      {pairwise && pairwise.length > 0 && (
-        <PairwiseTable
-          pairs={pairwise}
-          alpha={alpha}
-          metric={metric}
-          omnibusSignificant={significant}
-        />
-      )}
       <button
         type="button"
         onClick={() => setExpanded((s) => !s)}
