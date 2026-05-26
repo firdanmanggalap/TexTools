@@ -1,18 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Check,
   ClipboardPaste,
   Eraser,
   Loader2,
   Pin,
   Settings2,
   Sparkles,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { analyzeText, type AnalyzeResponse } from "@/lib/api";
 import { basicStats, lexicalRichness, readability } from "@/lib/metrics";
+import {
+  CATEGORY_META,
+  DEFAULT_OPTIONS,
+  cleanText,
+  type CleanCategory,
+  type CleanOptions,
+} from "@/lib/cleanText";
 import { cn } from "@/lib/utils";
 import { MetricGroup } from "./metric-group";
 import {
@@ -34,10 +43,19 @@ interface Params {
 
 const DEFAULTS: Params = { msttr: 50, mattr: 50, hdd: 42 };
 
+const CLEAN_CATEGORIES: CleanCategory[] = [
+  "markdown",
+  "latex",
+  "citations",
+  "htmlEmoji",
+  "whitespace",
+];
+
 export function Analyzer() {
   const [text, setText] = useState("");
   const [params, setParams] = useState<Params>(DEFAULTS);
-  const [showParams, setShowParams] = useState(false);
+  const [cleanOpts, setCleanOpts] = useState<CleanOptions>(DEFAULT_OPTIONS);
+  const [showSettings, setShowSettings] = useState(false);
   const [showPinPicker, setShowPinPicker] = useState(false);
   const {
     pinned,
@@ -126,23 +144,22 @@ export function Analyzer() {
     }
   }, [runAnalysis]);
 
-  // Handoff from /clean: if cleaner page stashed text in sessionStorage,
-  // pick it up on mount and auto-run analysis.
-  useEffect(() => {
-    try {
-      const handoff = sessionStorage.getItem("textools:handoff");
-      const autorun = sessionStorage.getItem("textools:handoff:autorun");
-      if (handoff) {
-        setText(handoff);
-        sessionStorage.removeItem("textools:handoff");
-        sessionStorage.removeItem("textools:handoff:autorun");
-        if (autorun) void runAnalysis(handoff);
-      }
-    } catch {
-      // sessionStorage unavailable — ignore
-    }
-    // Intentionally run only once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleClean = useCallback(() => {
+    if (!text) return;
+    const before = text.length;
+    const cleaned = cleanText(text, cleanOpts);
+    setText(cleaned);
+    const removed = Math.max(0, before - cleaned.length);
+    setError(null);
+    setNotice(
+      removed > 0
+        ? `Cleaned: −${removed.toLocaleString()} chars stripped from input.`
+        : "Cleaned: nothing to strip with current settings."
+    );
+  }, [text, cleanOpts]);
+
+  const toggleCleanCategory = useCallback((key: CleanCategory) => {
+    setCleanOpts((o) => ({ ...o, [key]: !o[key] }));
   }, []);
 
   const handleClear = useCallback(() => {
@@ -201,8 +218,14 @@ export function Analyzer() {
           )}
         />
 
-        {showParams && (
-          <ParameterBar params={params} onChange={setParams} onClose={() => setShowParams(false)} />
+        {showSettings && (
+          <SettingsPanel
+            params={params}
+            onParamsChange={setParams}
+            cleanOpts={cleanOpts}
+            onToggleClean={toggleCleanCategory}
+            onClose={() => setShowSettings(false)}
+          />
         )}
 
         {showPinPicker && (
@@ -228,6 +251,10 @@ export function Analyzer() {
             )}
           </PrimaryButton>
 
+          <GhostButton onClick={handleClean} disabled={loading || !text}>
+            <WandSparkles className="h-4 w-4" /> Clean
+          </GhostButton>
+
           <GhostButton onClick={handlePaste} disabled={loading}>
             <ClipboardPaste className="h-4 w-4" /> Paste &amp; Analyze
           </GhostButton>
@@ -247,10 +274,10 @@ export function Analyzer() {
           </GhostButton>
 
           <GhostButton
-            onClick={() => setShowParams((s) => !s)}
-            aria-pressed={showParams}
+            onClick={() => setShowSettings((s) => !s)}
+            aria-pressed={showSettings}
           >
-            <Settings2 className="h-4 w-4" /> Parameters
+            <Settings2 className="h-4 w-4" /> Settings
           </GhostButton>
         </div>
       </div>
@@ -312,7 +339,9 @@ function Hero() {
       </h1>
       <p className="text-muted-foreground max-w-2xl">
         Paste English text to instantly compute lexical diversity (TTR, MTLD, MSTTR, MATTR, HD-D)
-        and readability scores (Flesch, Gunning Fog, SMOG, Flesch-Kincaid).
+        and readability scores (Flesch, Gunning Fog, SMOG, Flesch-Kincaid). Use{" "}
+        <span className="text-foreground">Clean</span> to strip markdown / LaTeX
+        / citations before analyzing.
       </p>
     </div>
   );
@@ -381,48 +410,101 @@ function Banner({
   );
 }
 
-function ParameterBar({
+function SettingsPanel({
   params,
-  onChange,
+  onParamsChange,
+  cleanOpts,
+  onToggleClean,
   onClose,
 }: {
   params: Params;
-  onChange: (p: Params) => void;
+  onParamsChange: (p: Params) => void;
+  cleanOpts: CleanOptions;
+  onToggleClean: (key: CleanCategory) => void;
   onClose: () => void;
 }) {
   return (
     <div className="border-t border-border/60 bg-background/30 px-5 py-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Advanced parameters
+          Settings
         </div>
         <button
           onClick={onClose}
           className="text-muted-foreground/60 hover:text-foreground"
-          aria-label="Close parameters"
+          aria-label="Close settings"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <NumberInput
-          label="MSTTR window"
-          hint="Segment window size for Mean Segmental TTR. Default 50."
-          value={params.msttr}
-          onChange={(v) => onChange({ ...params, msttr: v })}
-        />
-        <NumberInput
-          label="MATTR window"
-          hint="Sliding window size for Moving Average TTR. Default 50."
-          value={params.mattr}
-          onChange={(v) => onChange({ ...params, mattr: v })}
-        />
-        <NumberInput
-          label="HD-D draws"
-          hint="Sample size for HD-D hypergeometric draws. Default 42."
-          value={params.hdd}
-          onChange={(v) => onChange({ ...params, hdd: v })}
-        />
+
+      <div className="flex flex-col gap-5">
+        {/* Text cleaner */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <WandSparkles className="h-3.5 w-3.5 text-accent" />
+            <div className="text-[11px] font-medium text-muted-foreground/80 uppercase tracking-wider">
+              Text cleaner
+            </div>
+            <span className="text-[11px] text-muted-foreground/60">
+              · applied when you press <span className="text-foreground">Clean</span>
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {CLEAN_CATEGORIES.map((key) => {
+              const meta = CATEGORY_META[key];
+              const on = cleanOpts[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onToggleClean(key)}
+                  title={meta.hint}
+                  aria-pressed={on}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ring-1",
+                    on
+                      ? "bg-accent-soft text-accent ring-accent/30"
+                      : "bg-muted text-muted-foreground ring-border hover:text-foreground"
+                  )}
+                >
+                  {on && <Check className="h-3 w-3" />}
+                  {meta.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Lexical richness parameters */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
+            <div className="text-[11px] font-medium text-muted-foreground/80 uppercase tracking-wider">
+              Lexical richness parameters
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <NumberInput
+              label="MSTTR window"
+              hint="Segment window size for Mean Segmental TTR. Default 50."
+              value={params.msttr}
+              onChange={(v) => onParamsChange({ ...params, msttr: v })}
+            />
+            <NumberInput
+              label="MATTR window"
+              hint="Sliding window size for Moving Average TTR. Default 50."
+              value={params.mattr}
+              onChange={(v) => onParamsChange({ ...params, mattr: v })}
+            />
+            <NumberInput
+              label="HD-D draws"
+              hint="Sample size for HD-D hypergeometric draws. Default 42."
+              value={params.hdd}
+              onChange={(v) => onParamsChange({ ...params, hdd: v })}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
