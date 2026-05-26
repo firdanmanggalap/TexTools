@@ -53,8 +53,12 @@ async def analyze(request: Request):
         if not text:
             return {"error": "Empty text"}
 
-        # 🔹 Sentence detection (regex)
-        sentences = re.split(r'[.!?\n\-]+', text)
+        # 🔹 Sentence detection (nltk Punkt)
+        # Flatten in-paragraph newlines first — AI bullet lists otherwise
+        # get sliced into 1-word "sentences", inflating count and crushing
+        # avg sentence length. Punkt handles real terminators (. ! ?) +
+        # common abbreviations (e.g. "Mr.", "i.e.") correctly.
+        sentences = nltk.sent_tokenize(text.replace('\n', ' '))
         sentences = [s.strip() for s in sentences if s.strip()]
         sentence_count = len(sentences)
 
