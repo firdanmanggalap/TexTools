@@ -31,7 +31,7 @@ export function MetricCard({ def, value, loading }: Props) {
   async function copyValue() {
     if (!interactive) return;
     try {
-      await navigator.clipboard.writeText(String(value));
+      await navigator.clipboard.writeText(display);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {

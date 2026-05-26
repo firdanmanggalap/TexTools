@@ -114,8 +114,11 @@ export const readability: MetricDef[] = [
 
 export function formatMetric(value: number | undefined, kind: MetricDef["kind"]) {
   if (value === undefined || value === null || Number.isNaN(value)) return "—";
-  if (kind === "integer") return Math.round(value).toLocaleString();
-  return value.toFixed(2);
+  if (kind === "integer") return Math.round(value).toLocaleString("id-ID");
+  return value.toLocaleString("id-ID", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export interface ReadabilityBand {
