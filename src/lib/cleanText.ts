@@ -15,7 +15,7 @@ export interface CleanOptions {
 
 export const DEFAULT_OPTIONS: CleanOptions = {
   markdown: true,
-  latex: false,
+  latex: true,
   citations: true,
   htmlEmoji: true,
   whitespace: true,

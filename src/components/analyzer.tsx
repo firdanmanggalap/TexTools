@@ -6,6 +6,7 @@ import {
   ClipboardPaste,
   Eraser,
   Loader2,
+  Pin,
   Settings2,
   Sparkles,
   X,
@@ -14,6 +15,11 @@ import { analyzeText, type AnalyzeResponse } from "@/lib/api";
 import { basicStats, lexicalRichness, readability } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import { MetricGroup } from "./metric-group";
+import {
+  PinnedCustomizer,
+  PinnedSection,
+  usePinnedMetrics,
+} from "./pinned-metrics";
 
 const SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. " +
@@ -32,6 +38,8 @@ export function Analyzer() {
   const [text, setText] = useState("");
   const [params, setParams] = useState<Params>(DEFAULTS);
   const [showParams, setShowParams] = useState(false);
+  const [showPinPicker, setShowPinPicker] = useState(false);
+  const { pinned, toggle: togglePinned, clear: clearPinned } = usePinnedMetrics();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<AnalyzeResponse | null>(null);
@@ -192,6 +200,15 @@ export function Analyzer() {
           <ParameterBar params={params} onChange={setParams} onClose={() => setShowParams(false)} />
         )}
 
+        {showPinPicker && (
+          <PinnedCustomizer
+            pinned={pinned}
+            onToggle={togglePinned}
+            onClear={clearPinned}
+            onClose={() => setShowPinPicker(false)}
+          />
+        )}
+
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-border/60 bg-background/40">
           <PrimaryButton onClick={handleAnalyze} disabled={loading || !text.trim()}>
             {loading ? (
@@ -214,6 +231,14 @@ export function Analyzer() {
           </GhostButton>
 
           <div className="flex-1" />
+
+          <GhostButton
+            onClick={() => setShowPinPicker((s) => !s)}
+            aria-pressed={showPinPicker}
+          >
+            <Pin className="h-4 w-4" />
+            Pinned{pinned.length > 0 ? ` · ${pinned.length}` : ""}
+          </GhostButton>
 
           <GhostButton
             onClick={() => setShowParams((s) => !s)}
@@ -245,6 +270,7 @@ export function Analyzer() {
           results && "animate-fade-in-up"
         )}
       >
+        <PinnedSection pinned={pinned} results={results} loading={loading} />
         <MetricGroup
           title="Basic stats"
           metrics={basicStats}
