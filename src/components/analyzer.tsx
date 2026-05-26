@@ -78,30 +78,32 @@ export function Analyzer() {
   const charCount = text.length;
 
   const runAnalysis = useCallback(
-    async (rawText: string) => {
+    async (rawText: string, preNotes: string[] = []) => {
       const value = rawText.trim();
       if (!value) return;
 
       const wc = value.split(/\s+/).filter(Boolean).length;
       const adjusted: Params = { ...params };
-      const notes: string[] = [];
+      const adjustNotes: string[] = [];
 
       if (wc < params.msttr * 2) {
         adjusted.msttr = Math.max(1, Math.floor(wc / 2));
-        notes.push(`MSTTR window → ${adjusted.msttr}`);
+        adjustNotes.push(`MSTTR window → ${adjusted.msttr}`);
       }
       if (wc < params.mattr) {
         adjusted.mattr = Math.max(1, wc);
-        notes.push(`MATTR window → ${adjusted.mattr}`);
+        adjustNotes.push(`MATTR window → ${adjusted.mattr}`);
       }
       if (wc <= params.hdd) {
         adjusted.hdd = Math.max(1, wc - 1);
-        notes.push(`HD-D draws → ${adjusted.hdd}`);
+        adjustNotes.push(`HD-D draws → ${adjusted.hdd}`);
       }
 
-      setNotice(
-        notes.length ? `Auto-adjusted for short text: ${notes.join(", ")}` : null
-      );
+      const combined: string[] = [...preNotes];
+      if (adjustNotes.length) {
+        combined.push(`Auto-adjusted for short text: ${adjustNotes.join(", ")}`);
+      }
+      setNotice(combined.length ? combined.join(" · ") : null);
       setError(null);
       setLoading(true);
 
@@ -122,13 +124,29 @@ export function Analyzer() {
     [params]
   );
 
+  const cleanAndRun = useCallback(
+    (rawText: string) => {
+      const cleaned = cleanText(rawText, cleanOpts);
+      const removed = Math.max(0, rawText.length - cleaned.length);
+      // Always write cleaned text back into the textarea so the user sees
+      // exactly what was sent to the analyzer.
+      setText(cleaned);
+      const preNotes =
+        removed > 0
+          ? [`Cleaned: −${removed.toLocaleString("id-ID")} chars stripped`]
+          : [];
+      void runAnalysis(cleaned, preNotes);
+    },
+    [cleanOpts, runAnalysis]
+  );
+
   const handleAnalyze = useCallback(() => {
     if (!text.trim()) {
       textareaRef.current?.focus();
       return;
     }
-    void runAnalysis(text);
-  }, [text, runAnalysis]);
+    cleanAndRun(text);
+  }, [text, cleanAndRun]);
 
   const handlePaste = useCallback(async () => {
     try {
@@ -137,12 +155,11 @@ export function Analyzer() {
         setError("Clipboard is empty.");
         return;
       }
-      setText(clip);
-      await runAnalysis(clip);
+      cleanAndRun(clip);
     } catch {
       setError("Couldn't read from clipboard.");
     }
-  }, [runAnalysis]);
+  }, [cleanAndRun]);
 
   const handleClean = useCallback(() => {
     if (!text) return;
@@ -339,9 +356,9 @@ function Hero() {
       </h1>
       <p className="text-muted-foreground max-w-2xl">
         Paste English text to instantly compute lexical diversity (TTR, MTLD, MSTTR, MATTR, HD-D)
-        and readability scores (Flesch, Gunning Fog, SMOG, Flesch-Kincaid). Use{" "}
-        <span className="text-foreground">Clean</span> to strip markdown / LaTeX
-        / citations before analyzing.
+        and readability scores (Flesch, Gunning Fog, SMOG, Flesch-Kincaid).{" "}
+        <span className="text-foreground">Analyze</span> auto-cleans the input
+        first — the textfield shows the version that was actually sent.
       </p>
     </div>
   );
